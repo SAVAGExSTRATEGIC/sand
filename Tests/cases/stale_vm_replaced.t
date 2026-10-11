@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euo pipefail
+
+source "$ROOT/Tests/lib/common.sh"
+
+init_defaults
+ensure_e2e_deps
+
+workdir=$(mktemp_dir)
+runner=$(unique_runner_name)
+config="$workdir/config.yml"
+write_config "$config" "$runner"
+
+cleanup() {
+  cleanup_runner "" "$runner" "$config" "$workdir"
+}
+trap cleanup EXIT
+
+# A VM left behind by a crash or a failed clone must not block the runner.
+tart clone "$SAND_E2E_IMAGE" "$runner"
+
+run_with_timeout "$SAND_E2E_TIMEOUT_SEC" "$SAND_BIN" run --config "$config"
+wait_for_vm_stopped_or_absent "$runner" 180
