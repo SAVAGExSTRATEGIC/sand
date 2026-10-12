@@ -24,16 +24,18 @@ final class ConfigValidator {
     private func validateRunners(_ runners: [Config.RunnerConfig]) -> [ConfigValidationIssue] {
         var issues: [ConfigValidationIssue] = []
         var seenNames = Set<String>()
+        // Each runner's VM is named after the runner and deleted before every clone,
+        // so it must never share a name with a local source image. Tart VMs are directories,
+        // and macOS volumes are case-insensitive by default, so names are compared lowercased.
+        let localSourceNames = Set(runners.compactMap { $0.vm.source.type == .local ? $0.vm.source.name?.lowercased() : nil })
 
         for runner in runners {
             let trimmedName = runner.name.trimmingCharacters(in: .whitespacesAndNewlines)
             let label = trimmedName.isEmpty ? "runner <unnamed>" : "runner \(trimmedName)"
             if trimmedName.isEmpty {
                 issues.append(.init(severity: .error, message: "runner name must not be empty."))
-            } else if seenNames.contains(trimmedName) {
+            } else if !seenNames.insert(trimmedName.lowercased()).inserted {
                 issues.append(.init(severity: .error, message: "runner name must be unique: \(trimmedName)."))
-            } else {
-                seenNames.insert(trimmedName)
             }
             if let stopAfter = runner.stopAfter, stopAfter <= 0 {
                 issues.append(.init(
@@ -47,6 +49,9 @@ final class ConfigValidator {
             }
             if let postRun = runner.postRun, postRun.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 runnerIssues.append(.init(severity: .error, message: "postRun must not be empty when provided."))
+            }
+            if localSourceNames.contains(runner.name.lowercased()) {
+                runnerIssues.append(.init(severity: .error, message: "runner name must differ from every local vm.source.name."))
             }
             validateVM(runner.vm, issues: &runnerIssues)
             validateProvisioner(runner.provisioner, issues: &runnerIssues)

@@ -97,6 +97,37 @@ final class ConfigValidatorTests: XCTestCase {
         let config = Config(runners: runners)
         let issues = ConfigValidator().validate(config)
         XCTAssertTrue(issues.contains(ConfigValidationIssue(severity: .error, message: "runner name must be unique: same.")))
+        let caseIssues = ConfigValidator().validate(Config(runners: [
+            Config.RunnerConfig(name: "Same", vm: vm, provisioner: provisioner, preRun: nil, postRun: nil, stopAfter: nil, healthCheck: nil),
+            Config.RunnerConfig(name: "same", vm: vm, provisioner: provisioner, preRun: nil, postRun: nil, stopAfter: nil, healthCheck: nil)
+        ]))
+        XCTAssertTrue(caseIssues.contains(ConfigValidationIssue(severity: .error, message: "runner name must be unique: same.")))
+    }
+
+    func testRunnerNamedLikeAnyLocalSourceIsRejected() {
+        func vm(_ source: Config.VMSource) -> Config.VM {
+            Config.VM(source: source, hardware: nil, mounts: [], cache: nil, run: .default, diskSizeGb: nil, ssh: .standard)
+        }
+        let localVM = vm(Config.VMSource(type: .local, image: nil, name: "golden"))
+        let ociVM = vm(Config.VMSource(type: .oci, image: "golden", name: nil))
+        let provisioner = Config.Provisioner(type: .script, script: .init(run: "echo hi"), github: nil)
+        func runner(_ name: String, _ vm: Config.VM) -> Config.RunnerConfig {
+            Config.RunnerConfig(name: name, vm: vm, provisioner: provisioner, preRun: nil, postRun: nil, stopAfter: nil, healthCheck: nil)
+        }
+        func issues(_ runners: [Config.RunnerConfig]) -> [ConfigValidationIssue] {
+            ConfigValidator().validate(Config(runners: runners)).filter { $0.message.contains("must differ from every local vm.source.name") }
+        }
+        let expected = [ConfigValidationIssue(severity: .error, message: "runner golden: runner name must differ from every local vm.source.name.")]
+        // Own source and another runner's source both collide.
+        XCTAssertEqual(issues([runner("golden", localVM)]), expected)
+        XCTAssertEqual(issues([runner("golden", ociVM), runner("runner-2", localVM)]), expected)
+        XCTAssertEqual(
+            issues([runner("Golden", ociVM), runner("runner-2", localVM)]),
+            [ConfigValidationIssue(severity: .error, message: "runner Golden: runner name must differ from every local vm.source.name.")]
+        )
+        // OCI image names are not tart VM names, so they never collide.
+        XCTAssertEqual(issues([runner("golden", ociVM), runner("runner-2", ociVM)]), [])
+        XCTAssertEqual(issues([runner("runner-1", localVM)]), [])
     }
 
     func testRunnerCacheValidation() throws {

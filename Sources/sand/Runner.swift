@@ -59,6 +59,8 @@ struct Runner: Sendable {
             for _ in 0..<stopAfter {
                 do {
                     try await runOnce()
+                } catch where error is CancellationError || Task.isCancelled {
+                    throw CancellationError()
                 } catch {
                     logger.error("runOnce failed (vm=\(vmName)): \(String(describing: error))")
                     throw error
@@ -67,11 +69,20 @@ struct Runner: Sendable {
             return
         }
         while true {
+            // A finished run can schedule a zero backoff, so the backoff sleep alone doesn't see cancellation.
+            try Task.checkCancellation()
             do {
                 try await runOnce()
+            } catch where error is CancellationError || Task.isCancelled {
+                // A cancelled tart or GitHub call can surface as its own error type; report it as cancellation, not a failure.
+                throw CancellationError()
             } catch {
-                logger.error("runOnce failed (vm=\(vmName)): \(String(describing: error))")
-                throw error
+                // A transient failure (e.g. two slots cloning the same image at once) must not
+                // retire this slot for good: sand keeps running the other slots, so launchd never restarts it.
+                // The next runOnce waits out the backoff, which grows while the same failure repeats.
+                _ = await handleStageFailure(error, stage: "runOnce", healthCheckState: nil)
+                // No-op when the failing stage already cleaned up; otherwise don't keep the VM through the backoff.
+                await shutdownCoordinator.cleanup(reason: "runOnce failed")
             }
         }
     }
@@ -79,7 +90,7 @@ struct Runner: Sendable {
     private func runOnce() async throws {
         let stopAfterLabel = config.stopAfter.map(String.init) ?? "nil"
         logger.debug("runOnce start (vm=\(vmName), stopAfter=\(stopAfterLabel))")
-        await applyRestartBackoffIfNeeded()
+        try await applyRestartBackoffIfNeeded()
         let name = vmName
         let vm = config.vm
         let provisionerConfig = config.provisioner
@@ -103,6 +114,15 @@ struct Runner: Sendable {
         } catch {
             logger.warning("preflight cleanup failed: \(String(describing: error))")
         }
+        // Before cloning, so a bad mount path doesn't leave a cloned VM behind on every retry.
+        let directoryMounts = try buildDirectoryMounts(vm: vm)
+        // Leftover from a crash or a failed clone: tart clone refuses to overwrite it.
+        do {
+            try await tart.delete(name: name)
+            logger.warning("deleted leftover VM \(name)")
+        } catch {
+            logger.debug("delete leftover VM \(name) skipped: \(String(describing: error))")
+        }
         logger.info("clone VM \(name) from \(source)")
         do {
             try await tart.clone(source: source, name: name)
@@ -117,7 +137,6 @@ struct Runner: Sendable {
             await shutdownCoordinator.cleanup(reason: "apply VM config failed")
             throw error
         }
-        let directoryMounts = try buildDirectoryMounts(vm: vm)
         let runOptions = Tart.RunOptions(
             directoryMounts: directoryMounts,
             noAudio: vm.hardware?.audio == false,
@@ -812,7 +831,7 @@ struct Runner: Sendable {
         }
     }
 
-    private func applyRestartBackoffIfNeeded() async {
+    private func applyRestartBackoffIfNeeded() async throws {
         let (delay, reason) = await restartBackoff.takePending()
         guard delay > 0 else {
             logger.debug("restart backoff: none pending")
@@ -828,11 +847,7 @@ struct Runner: Sendable {
         } else {
             logger.warning("restart backoff \(delay)s")
         }
-        do {
-            try await Task.sleep(nanoseconds: nanos(from: delay))
-        } catch {
-            return
-        }
+        try await Task.sleep(nanoseconds: nanos(from: delay))
     }
 
     private func logLines(logger: Logger, _ text: String, level: LogLevel) {
