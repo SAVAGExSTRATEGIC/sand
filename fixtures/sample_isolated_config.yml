@@ -1,0 +1,30 @@
+# Example only: also block every actual host IPv4 address, validate the pinned
+# Softnet binary, and probe isolation before jobs.
+runners:
+  - name: isolated-example
+    stopAfter: 1
+    vm:
+      source:
+        type: local
+        name: sealed-ci-base
+      mounts: []
+      run:
+        noGraphics: true
+        noClipboard: true
+        nested: false
+        softnet:
+          allow: ["in @host"]
+          block:
+            - "out @host"
+            - "in 0.0.0.0/0"
+            - "out 10.0.0.0/8"
+            - "out 172.16.0.0/12"
+            - "out 192.168.0.0/16"
+            - "out 169.254.0.0/16"
+            - "out 100.64.0.0/10"
+      ssh:
+        isolated: true
+    provisioner:
+      type: script
+      config:
+        run: "true"

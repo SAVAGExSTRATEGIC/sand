@@ -180,14 +180,16 @@ struct Config: Decodable, Sendable {
         let noClipboard: Bool
         let nested: Bool
         let rootDiskOpts: String?
+        let softnet: Softnet?
 
         static let `default` = RunOptions(noGraphics: true, noClipboard: false, nested: false)
 
-        init(noGraphics: Bool, noClipboard: Bool, nested: Bool, rootDiskOpts: String? = nil) {
+        init(noGraphics: Bool, noClipboard: Bool, nested: Bool, rootDiskOpts: String? = nil, softnet: Softnet? = nil) {
             self.noGraphics = noGraphics
             self.noClipboard = noClipboard
             self.nested = nested
             self.rootDiskOpts = rootDiskOpts
+            self.softnet = softnet
         }
 
         init(from decoder: Decoder) throws {
@@ -196,6 +198,7 @@ struct Config: Decodable, Sendable {
             self.noClipboard = try container.decodeIfPresent(Bool.self, forKey: .noClipboard) ?? false
             self.nested = try container.decodeIfPresent(Bool.self, forKey: .nested) ?? false
             self.rootDiskOpts = try container.decodeIfPresent(String.self, forKey: .rootDiskOpts)
+            self.softnet = try container.decodeIfPresent(Softnet.self, forKey: .softnet)
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -203,7 +206,13 @@ struct Config: Decodable, Sendable {
             case noClipboard
             case nested
             case rootDiskOpts
+            case softnet
         }
+    }
+
+    struct Softnet: Decodable, Sendable, Equatable {
+        let allow: [String]
+        let block: [String]
     }
 
     struct SSH: Decodable, Sendable {
@@ -211,13 +220,15 @@ struct Config: Decodable, Sendable {
         let password: String
         let port: Int
         let connectMaxRetries: Int?
+        let isolated: Bool
         static let standard = SSH(user: "admin", password: "admin", port: 22)
 
-        init(user: String, password: String, port: Int, connectMaxRetries: Int? = nil) {
+        init(user: String, password: String, port: Int, connectMaxRetries: Int? = nil, isolated: Bool = false) {
             self.user = user
             self.password = password
             self.port = port
             self.connectMaxRetries = connectMaxRetries
+            self.isolated = isolated
         }
 
         init(from decoder: Decoder) throws {
@@ -226,6 +237,7 @@ struct Config: Decodable, Sendable {
             self.password = try container.decodeIfPresent(String.self, forKey: .password) ?? "admin"
             self.port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 22
             self.connectMaxRetries = try container.decodeIfPresent(Int.self, forKey: .connectMaxRetries)
+            self.isolated = try container.decodeIfPresent(Bool.self, forKey: .isolated) ?? false
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -233,6 +245,7 @@ struct Config: Decodable, Sendable {
             case password
             case port
             case connectMaxRetries
+            case isolated
         }
     }
 

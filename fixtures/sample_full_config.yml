@@ -23,12 +23,14 @@ runners:
         noClipboard: false
         nested: false
         rootDiskOpts: null
+        softnet: null
       diskSizeGb: null
       ssh:
         user: admin
         password: admin
         port: 22
         connectMaxRetries: null
+        isolated: false
     provisioner:
       type: script
       config:
@@ -55,6 +57,7 @@ runners:
         password: admin
         port: 22
         connectMaxRetries: null
+        isolated: false
     provisioner:
       type: github
       config:
