@@ -183,6 +183,21 @@ runners:
 
 Set `nested: true` to boot the VM with `tart run --nested`, enabling nested virtualization inside the guest. This requires an Apple Silicon host and guest that support it (see the [Tart docs](https://tart.run/)).
 
+For a pinned Tart/Softnet installation, `vm.run.softnet` passes explicit `allow`
+and `block` arrays to Tart. Directional rules such as `in @host` are preserved as
+single arguments. `vm.ssh.isolated: true` disables SSH configuration inheritance,
+agent/X11/port forwarding, proxy commands, local commands, and multiplexed
+connections for both SSH and SCP. Existing configurations keep their defaults.
+
+See `fixtures/sample_isolated_config.yml` for the option shape. These options are
+building blocks, not an isolation certification: the host controller must pin
+and validate Softnet, block the host's actual IPv4 addresses, omit mounts and
+shared caches, and probe a live guest before admitting jobs. Blocking `out @host`
+also blocks the gateway DNS server advertised by Softnet DHCP; prepare the guest
+with approved external DNS resolvers before running jobs. Do not weaken the host
+block to restore DNS. The sample launches only a script, without registering a
+GitHub runner.
+
 Set `rootDiskOpts` to tune the root disk with `tart run --root-disk-opts`. Since runner VMs are thrown away after each job, `caching=cached,sync=none` trades crash consistency for much faster guest fsync.
 
 Full configurations keys can be found at [fixtures/sample_full_config.yml](fixtures/sample_full_config.yml) or [fixtures/sample_on_prod.yml](fixtures/sample_on_prod.yml)

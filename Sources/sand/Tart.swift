@@ -34,6 +34,7 @@ struct Tart: Sendable {
         let noClipboard: Bool
         let nested: Bool
         var rootDiskOpts: String? = nil
+        var softnet: Config.Softnet? = nil
 
         static let `default` = RunOptions(directoryMounts: [], noAudio: false, noGraphics: true, noClipboard: false, nested: false)
     }
@@ -119,6 +120,15 @@ struct Tart: Sendable {
         }
         if let rootDiskOpts = options.rootDiskOpts {
             arguments.append("--root-disk-opts=\(rootDiskOpts)")
+        }
+        if let softnet = options.softnet {
+            arguments.append("--net-softnet")
+            if !softnet.allow.isEmpty {
+                arguments.append("--net-softnet-allow=" + softnet.allow.joined(separator: ","))
+            }
+            if !softnet.block.isEmpty {
+                arguments.append("--net-softnet-block=" + softnet.block.joined(separator: ","))
+            }
         }
         for mount in options.directoryMounts {
             arguments.append("--dir")

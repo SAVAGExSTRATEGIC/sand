@@ -17,6 +17,20 @@ struct SSHClient {
         "-o", "ServerAliveCountMax=6"
     ]
 
+    // Do not load user/system SSH config or inherit forwarding for isolated guests.
+    static let isolatedOptions = [
+        "-F", "/dev/null",
+        "-o", "ForwardAgent=no", "-o", "ForwardX11=no",
+        "-o", "ClearAllForwardings=yes", "-o", "PermitLocalCommand=no",
+        "-o", "ProxyCommand=none", "-o", "ProxyJump=none",
+        "-o", "ControlMaster=no", "-o", "ControlPath=none",
+        "-o", "IdentityAgent=none"
+    ]
+
+    private var options: [String] {
+        (config.isolated ? Self.isolatedOptions : []) + Self.connectionOptions
+    }
+
     func exec(command: String) async throws -> ProcessResult? {
         return try await processRunner.run(
             executable: "sshpass",
@@ -35,7 +49,7 @@ struct SSHClient {
     func copy(localPath: String, remotePath: String) async throws -> ProcessResult? {
         return try await processRunner.run(
             executable: "sshpass",
-            arguments: ["-p", config.password, "scp"] + Self.connectionOptions + [
+            arguments: ["-p", config.password, "scp"] + options + [
                 "-P", String(config.port),
                 localPath,
                 "\(config.user)@\(host):\(remotePath)"
@@ -50,7 +64,7 @@ struct SSHClient {
 
     private func sshArguments(command: String) -> [String] {
         let escaped = command.replacingOccurrences(of: "'", with: "'\"'\"'")
-        return ["-p", config.password, "ssh"] + Self.connectionOptions + [
+        return ["-p", config.password, "ssh"] + options + [
             "-p", String(config.port),
             "\(config.user)@\(host)",
             "/bin/bash -lc '\(escaped)'"
