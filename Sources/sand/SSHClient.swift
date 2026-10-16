@@ -47,15 +47,29 @@ struct SSHClient {
     }
 
     func copy(localPath: String, remotePath: String) async throws -> ProcessResult? {
-        return try await processRunner.run(
-            executable: "sshpass",
-            arguments: ["-p", config.password, "scp"] + options + [
-                "-P", String(config.port),
-                localPath,
-                "\(config.user)@\(host):\(remotePath)"
-            ],
-            wait: true
-        )
+        let arguments = ["-p", config.password, "scp"] + options + [
+            "-P", String(config.port),
+            localPath,
+            "\(config.user)@\(host):\(remotePath)"
+        ]
+        // SSH commands already tolerate transient startup failures. Copying the
+        // verified runner archive needs the same bounded opportunity to settle.
+        // Keep the destination, credentials and isolation options unchanged.
+        var retries = 0
+        while true {
+            do {
+                return try await processRunner.run(
+                    executable: "sshpass", arguments: arguments, wait: true
+                )
+            } catch let error as ProcessRunnerError {
+                guard case let .failed(exitCode, _, _, _) = error,
+                      exitCode == 255, retries < 2 else {
+                    throw error
+                }
+                retries += 1
+                try await Task.sleep(nanoseconds: UInt64(retries) * 1_000_000_000)
+            }
+        }
     }
 
     func checkConnection() async throws {
